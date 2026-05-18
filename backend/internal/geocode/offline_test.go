@@ -49,8 +49,14 @@ func TestGetCountryName_Unknown(t *testing.T) {
 }
 
 func TestGetProvinceName_China(t *testing.T) {
-	assert.Equal(t, "北京市", getProvinceName("CN", "01"))
-	assert.Equal(t, "四川省", getProvinceName("CN", "23"))
+	// 验证修正后的省份映射
+	assert.Equal(t, "安徽省", getProvinceName("CN", "01"))  // 01 → 安徽
+	assert.Equal(t, "上海市", getProvinceName("CN", "23"))  // 23 → 上海
+	assert.Equal(t, "贵州省", getProvinceName("CN", "18"))  // 18 → 贵州（原版错误映射为辽宁）
+	assert.Equal(t, "辽宁省", getProvinceName("CN", "19"))  // 19 → 辽宁（原版错误映射为海南）
+	assert.Equal(t, "海南省", getProvinceName("CN", "31"))  // 31 → 海南（原版错误映射为四川）
+	assert.Equal(t, "四川省", getProvinceName("CN", "32"))  // 32 → 四川（原版错误映射为重庆）
+	assert.Equal(t, "重庆市", getProvinceName("CN", "33"))  // 33 → 重庆（原版错误映射为香港）
 }
 
 func TestGetProvinceName_NonChina(t *testing.T) {
