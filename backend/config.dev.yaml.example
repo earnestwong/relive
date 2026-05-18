@@ -1,0 +1,50 @@
+# 开发环境覆盖配置示例
+# 复制为 backend/config.dev.yaml 使用。
+# 角色：覆盖 backend/config.base.yaml 中与本地开发相关的环境差异。
+# 说明：AI / geocode / display / scan paths 等业务配置在运行时应以数据库为准。
+
+server:
+  mode: "debug"
+  external_url: "http://localhost:8080"  # 开发环境默认值；生产环境建议由部署层 RELIVE_EXTERNAL_URL 注入
+  static_path: ""  # 开发环境不提供静态文件（由 Vite 独立提供）
+
+database:
+  path: "../data/backend/relive.db"
+  log_mode: true
+
+photos:
+  root_path: "/path/to/your/photos"  # 本地开发机器上的可访问路径
+  thumbnail_path: "../data/backend/thumbnails"
+  exclude_dirs:
+    - ".sync"
+    - "@eaDir"
+    - "#recycle"
+    - ".DS_Store"
+  supported_formats:
+    - ".jpg"
+    - ".jpeg"
+    - ".png"
+    - ".heic"
+
+logging:
+  level: "debug"
+  file: "../data/backend/logs/relive.log"
+  console: true
+
+security:
+  jwt_secret: "dev-secret-change-in-production"
+  api_key_prefix: "sk-relive-"
+
+performance:
+  max_scan_workers: 1
+  max_analyze_workers: 1
+  max_thumbnail_workers: 1
+  max_geocode_workers: 1
+
+people:
+  ml_endpoint: "http://localhost:5050"
+  timeout: 15
+  merge_suggestion_threshold: 0.62
+  merge_suggestion_max_pairs_per_run: 200
+  merge_suggestion_batch_size: 100
+  merge_suggestion_cooldown_seconds: 300

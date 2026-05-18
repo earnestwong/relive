@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全彩图文字布局预览</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #eee;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  padding: 24px;
+}
+h1 {
+  text-align: center;
+  font-size: 20px;
+  margin-bottom: 24px;
+  color: #fff;
+}
+.compare {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 32px;
+}
+.sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.sample-label {
+  font-size: 14px;
+  color: #aaa;
+}
+.canvas-wrapper {
+  border: 2px solid #444;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+/* 横版 1024x768 - 实际尺寸 */
+.canvas-landscape {
+  width: 1024px;
+  height: 768px;
+  position: relative;
+  background: #fff;
+}
+/* 竖版 768x1024 - 实际尺寸 */
+.canvas-portrait {
+  width: 768px;
+  height: 1024px;
+  position: relative;
+  background: #fff;
+}
+.photo-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+}
+.photo-area img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.info-area {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+}
+.info-area .title {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 20px;
+  line-height: 1.3;
+  color: #222;
+  padding: 0 32px;
+  word-wrap: break-word;
+}
+.info-area .subtitle {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 15px;
+  color: #666;
+  padding: 0 32px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 尺寸标注 */
+.dimension {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<h1>全彩图文字布局预览</h1>
+
+<div class="compare">
+
+  <!-- 横版 - 短标题 -->
+  <div class="sample">
+    <div class="sample-label">横版 1024×768 · 短标题</div>
+    <div class="canvas-wrapper">
+      <div class="canvas-landscape">
+        <div class="photo-area" style="height: 668px;">
+          <img src="https://picsum.photos/1024/668?random=1" alt="">
+        </div>
+        <div class="info-area" style="height: 100px;">
+          <div class="title">春天的樱花</div>
+          <div class="subtitle">2025.03.15 · 上海市杨浦区</div>
+        </div>
+      </div>
+    </div>
+    <div class="dimension">1024 × 768 · 照片 668px · 信息区 100px</div>
+  </div>
+
+  <!-- 横版 - 长标题（换行） -->
+  <div class="sample">
+    <div class="sample-label">横版 1024×768 · 长标题（换行测试）</div>
+    <div class="canvas-wrapper">
+      <div class="canvas-landscape">
+        <div class="photo-area" style="height: 668px;">
+          <img src="https://picsum.photos/1024/668?random=2" alt="">
+        </div>
+        <div class="info-area" style="height: 100px;">
+          <div class="title">周末和家人一起去公园散步享受温暖的阳光和美好的周末时光</div>
+          <div class="subtitle">2025.05.01 · 杭州市西湖区</div>
+        </div>
+      </div>
+    </div>
+    <div class="dimension">1024 × 768 · 照片 668px · 信息区 100px</div>
+  </div>
+
+  <!-- 竖版 - 短标题 -->
+  <div class="sample">
+    <div class="sample-label">竖版 768×1024 · 短标题</div>
+    <div class="canvas-wrapper">
+      <div class="canvas-portrait">
+        <div class="photo-area" style="height: 924px;">
+          <img src="https://picsum.photos/768/924?random=3" alt="">
+        </div>
+        <div class="info-area" style="height: 100px;">
+          <div class="title">海边日落</div>
+          <div class="subtitle">2024.08.20 · 三亚市海棠区</div>
+        </div>
+      </div>
+    </div>
+    <div class="dimension">768 × 1024 · 照片 924px · 信息区 100px</div>
+  </div>
+
+  <!-- 竖版 - 长标题（换行） -->
+  <div class="sample">
+    <div class="sample-label">竖版 768×1024 · 长标题（换行测试）</div>
+    <div class="canvas-wrapper">
+      <div class="canvas-portrait">
+        <div class="photo-area" style="height: 924px;">
+          <img src="https://picsum.photos/768/924?random=4" alt="">
+        </div>
+        <div class="info-area" style="height: 100px;">
+          <div class="title">在老城区的小巷子里发现了一家很有味道的咖啡馆和精致的下午茶</div>
+          <div class="subtitle">2025.01.12 · 成都市锦江区</div>
+        </div>
+      </div>
+    </div>
+    <div class="dimension">768 × 1024 · 照片 924px · 信息区 100px</div>
+  </div>
+
+</div>
+
+</body>
+</html>

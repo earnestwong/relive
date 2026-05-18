@@ -1,0 +1,37 @@
+#ifndef CONFIG_LOCAL_H
+#define CONFIG_LOCAL_H
+
+// 复制此文件为 config_local.h 并填入实际配置值
+
+// WiFi 配置
+#define WIFI_SSID "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+
+// 办公室 SSID（扫描到此 SSID 时自动使用编译时凭据连接）
+// #define OFFICE_SSID "Your_Office_WiFi"
+
+// 默认刷新计划（HH:MM 格式，逗号分隔，24小时制）
+// 仅在办公室模式或 NVS 无计划时生效
+// #define DEFAULT_SCHEDULES "0800,1200,1800,2200"
+
+// 服务器配置
+// 支持以下格式：
+// - 纯主机名/IP: "192.168.1.100" 或 "your-server.local"
+// - 带协议: "http://192.168.1.100" 或 "https://your-server.example.com"
+#define SERVER_HOST "192.168.1.100"
+#define SERVER_PORT 8080
+
+// 设备 API Key（在后端管理界面创建设备时获得）
+#define DEVICE_API_KEY "your_device_api_key_here"
+
+// 自定义 MAC 地址（可选）
+// 支持格式: "AA:BB:CC:DD:EE:FF" 或 "AA-BB-CC-DD-EE-FF"
+// 取消下面两行的注释并设置你想要的 MAC 地址
+// #define USE_CUSTOM_MAC_ADDRESS
+// #define CUSTOM_MAC_ADDRESS_STRING "AA:BB:CC:DD:EE:FF"
+
+// 可选：覆盖其他配置
+// #define REFRESH_INTERVAL_MS 300000  // 5分钟
+// #define LOG_LEVEL 3  // DEBUG 级别
+
+#endif // CONFIG_LOCAL_H

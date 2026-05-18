@@ -1,0 +1,34 @@
+import http from '@/utils/request'
+import type { ApiResponse } from '@/types/api'
+import type { GeocodeTask, GeocodeStats, GeocodeBackgroundLogsResponse } from '@/types/geocode'
+
+export const geocodeApi = {
+  startBackground() {
+    return http.post<ApiResponse<GeocodeTask>>('/geocode/background/start')
+  },
+  stopBackground() {
+    return http.post<ApiResponse<void>>('/geocode/background/stop')
+  },
+  getTask() {
+    return http.get<ApiResponse<GeocodeTask | null>>('/geocode/task')
+  },
+  getStats() {
+    return http.get<ApiResponse<GeocodeStats>>('/geocode/stats')
+  },
+  getBackgroundLogs() {
+    return http.get<ApiResponse<GeocodeBackgroundLogsResponse>>('/geocode/background/logs')
+  },
+  repairLegacyStatus() {
+    return http.post<ApiResponse<{ count: number }>>('/geocode/repair-legacy-status')
+  },
+  enqueue(photoId: number, force: boolean = false) {
+    return http.post<ApiResponse<void>>('/geocode/enqueue', { photo_id: photoId, force })
+  },
+
+  geocode(photoId: number) {
+    return http.post<ApiResponse<void>>('/geocode/geocode', { photo_id: photoId })
+  },
+  regeocodeAll() {
+    return http.post<ApiResponse<void>>('/geocode/regeocode-all')
+  },
+}

@@ -1,0 +1,100 @@
+# 在 Unraid SSH 会话中执行以下命令：
+
+# 1. 创建部署目录
+mkdir -p /mnt/user/appdata/relive/data/backend/logs
+mkdir -p /mnt/user/appdata/relive/data/backend/thumbnails
+mkdir -p /mnt/user/appdata/relive/data/ml-models
+mkdir -p /mnt/user/appdata/relive/backend
+
+# 2. 生成 .env 文件
+cat > /mnt/user/appdata/relive/.env << 'EOF'
+JWT_SECRET=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+RELIVE_PORT=3002
+EOF
+
+# 重新生成带正确密钥的 .env
+JWT_SECRET=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+echo "JWT_SECRET=$JWT_SECRET" > /mnt/user/appdata/relive/.env
+echo "RELIVE_PORT=3002" >> /mnt/user/appdata/relive/.env
+
+# 3. 生成 config.prod.yaml
+cat > /mnt/user/appdata/relive/backend/config.prod.yaml << 'EOF'
+server:
+  mode: "release"
+  external_url: ""
+  static_path: "/app/frontend/dist"
+database:
+  path: "/app/data/relive.db"
+  log_mode: false
+photos:
+  root_path: "/app/photos"
+  thumbnail_path: "/app/data/thumbnails"
+logging:
+  level: "info"
+  file: "/app/data/logs/relive.log"
+  console: true
+security:
+  jwt_Secret: "${JWT_SECRET:-relive-production-secret-change-me}"
+  api_key_prefix: "sk-relive-"
+performance:
+  max_scan_workers: 2
+  max_analyze_workers: 1
+  max_thumbnail_workers: 1
+  max_geocode_workers: 1
+  cache_size: 1000
+people:
+  ml_endpoint: "http://relive-ml:5050"
+  timeout: 15
+  merge_suggestion_threshold: 0.58
+EOF
+
+# 4. 生成 docker-compose.yml
+cat > /mnt/user/appdata/relive/docker-compose.yml << 'EOF'
+services:
+  relive-ml:
+    image: davidhu/relive-ml:latest
+    container_name: relive-ml
+    restart: unless-stopped
+    environment:
+      - RELIVE_ML_ONNX_DEVICE=cpu
+      - RELIVE_ML_MODEL_PACK=buffalo_sc
+    volumes:
+      - ./data/ml-models:/app/models
+    networks:
+      - relive-network
+
+  relive:
+    image: davidhu/relive:latest
+    container_name: relive
+    restart: unless-stopped
+    stop_grace_period: 60s
+    depends_on:
+      - relive-ml
+    ports:
+      - "3002:8080"
+    volumes:
+      - ./backend/config.prod.yaml:/app/config.yaml:ro
+      - ./data/backend:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - JWT_SECRET=${JWT_SECRET}
+      - GOMAXPROCS=2
+      - MAX_SCAN_WORKERS=2
+      - MAX_THUMBNAIL_WORKERS=1
+      - MAX_GEOCODE_WORKERS=1
+      - AUTO_IMPORT_CITIES=true
+    networks:
+      - relive-network
+
+networks:
+  relive-network:
+    driver: bridge
+EOF
+
+# 5. 拉取镜像并启动
+cd /mnt/user/appdata/relive
+docker-compose pull
+docker-compose up -d
+
+# 6. 查看状态
+docker-compose ps

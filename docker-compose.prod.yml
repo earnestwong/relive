@@ -1,0 +1,97 @@
+# Relive 生产环境配置（使用 DockerHub 镜像）
+# 使用方法：make prod 或 docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  relive-ml:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    image: relive-ml:local
+    container_name: relive-ml
+    restart: unless-stopped
+    environment:
+      - RELIVE_ML_ONNX_DEVICE=cpu
+      - RELIVE_ML_MODEL_PACK=buffalo_sc
+    volumes:
+      # - ./data/photos:/photos:ro
+      # InsightFace 模型缓存持久化
+      - ./data/ml-models:/app/models
+    networks:
+      - relive-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+
+  relive:
+    image: davidhu/relive:latest
+    container_name: relive
+    restart: unless-stopped
+    stop_grace_period: 60s
+    depends_on:
+      - relive-ml
+    # Synology 兼容版 4 核 NAS 推荐：
+    # - 部分群晖内核/容器环境不支持 cpus(CFS quota)，会导致容器启动失败
+    # - 因此这里改用 cpu_shares + GOMAXPROCS + 应用层 worker 限制
+    # - 如果后续观察到系统仍然很空闲，可逐步把 MAX_SCAN_WORKERS 提到 3
+    cpu_shares: 512
+    ports:
+      - "${RELIVE_PORT:-8080}:8080"
+    volumes:
+      # 配置文件
+      - ./backend/config.prod.yaml:/app/config.yaml:ro
+      # 数据目录（数据库、日志）
+      - ./data/backend:/app/data
+      # =============================================================================
+      # 离线逆地理编码数据（可选）
+      # =============================================================================
+      # 下载 cities500.zip 并解压到 ./data/backend/ 目录
+      # 容器启动时会自动检测并导入
+      # =============================================================================
+      # 照片目录挂载
+      # =============================================================================
+      # 使用方法：
+      # 1. 修改下方的宿主机路径（冒号左边）为你实际的照片目录
+      # 2. 容器内路径（冒号右边）保持 /app/photos 不变
+      # 3. 在 Web 界面中添加扫描路径时使用容器内路径：/app/photos
+      #
+      # 示例：
+      # - /Users/yourname/Pictures:/app/photos:ro
+      # - /volume1/photos:/app/photos:ro
+      # =============================================================================
+      # - ./data/photos:/app/photos:ro
+    environment:
+      - TZ=Asia/Shanghai
+      - JWT_SECRET=${JWT_SECRET}
+      - RELIVE_EXTERNAL_URL=${RELIVE_EXTERNAL_URL:-}
+      # 4 核 NAS 推荐值：
+      # - GOMAXPROCS=2：Go 最多并行使用 2 个 CPU 核心
+      # - MAX_SCAN_WORKERS=2：扫描同时处理 2 张照片
+      # - MAX_THUMBNAIL_WORKERS=1：缩略图后台单线程生成
+      # - MAX_GEOCODE_WORKERS=1：GPS 逆地理编码后台单线程处理
+      # 这组配置更适合首次扫描 10 万+ 照片，整体更稳、更不容易把 NAS 拖慢。
+      - GOMAXPROCS=2
+      - MAX_SCAN_WORKERS=2
+      - MAX_THUMBNAIL_WORKERS=1
+      - MAX_GEOCODE_WORKERS=1
+      # 自动导入城市数据（默认开启，首次启动时会自动导入 cities500.txt）
+      - AUTO_IMPORT_CITIES=${AUTO_IMPORT_CITIES:-true}
+    networks:
+      - relive-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  relive-network:
+    driver: bridge

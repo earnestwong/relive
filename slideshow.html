@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>
+// 强制全屏，隐藏 iPad 状态栏
+try {
+  window.scrollTo(0, 1);
+  setTimeout(function(){ window.scrollTo(0, 0); }, 100);
+} catch(e) {}
+</script>
+<title>Relive Photo Frame</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+/* ===== 登录页 ===== */
+#login-page{position:fixed;top:0;left:0;right:0;bottom:0;background:#111;display:flex;align-items:center;justify-content:center;z-index:100}
+.login-box{width:320px;padding:32px;background:#1a1a1a;border-radius:12px;color:#fff}
+.login-box h2{text-align:center;margin-bottom:24px;font-size:20px;font-weight:500}
+.login-box input{width:100%;padding:10px 12px;margin-bottom:12px;border:1px solid #333;border-radius:6px;background:#222;color:#fff;font-size:14px;outline:none;-webkit-appearance:none}
+.login-box input:focus{border-color:#555}
+.login-box button{width:100%;padding:10px;border:none;border-radius:6px;background:#fff;color:#000;font-size:14px;font-weight:500;cursor:pointer}
+.login-box button:disabled{opacity:0.5;cursor:default}
+.login-error{color:#ff6b6b;font-size:12px;text-align:center;margin-top:8px;min-height:18px}
+.login-hint{color:#666;font-size:11px;text-align:center;margin-top:16px}
+
+/* ===== 幻灯片 ===== */
+#slideshow{position:fixed;top:0;left:0;width:100%;height:100%;display:none}
+#photo-wrap{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+#photo{width:100%;height:100%;object-fit:contain;opacity:0;-webkit-transition:opacity 1.2s ease-in;transition:opacity 1.2s ease-in}
+#photo.visible{opacity:1}
+#photo.fade-out{opacity:0;-webkit-transition:opacity 1.2s ease-out;transition:opacity 1.2s ease-out}
+
+/* 进度条 */
+#progress{position:fixed;bottom:0;left:0;height:2px;background:rgba(255,255,255,0.3);-webkit-transition:width 0.5s linear;transition:width 0.5s linear;z-index:10}
+
+/* 状态提示 */
+#status{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#888;font-size:15px;text-align:center;padding:20px;display:none;z-index:5}
+#status .spinner{display:inline-block;width:32px;height:32px;border:3px solid rgba(255,255,255,0.15);border-top-color:rgba(255,255,255,0.6);border-radius:50%;-webkit-animation:spin 0.8s linear infinite;animation:spin 0.8s linear infinite;margin-bottom:12px}
+@-webkit-keyframes spin{to{-webkit-transform:rotate(360deg)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- 登录页 -->
+<div id="login-page">
+  <div class="login-box">
+    <h2>Relive</h2>
+    <input type="text" id="input-user" placeholder="Username" value="admin">
+    <input type="password" id="input-pass" placeholder="Password">
+    <button id="btn-login" onclick="doLogin()">Login</button>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-hint">Sign in to start photo frame</div>
+  </div>
+</div>
+
+<!-- 幻灯片 -->
+<div id="slideshow">
+  <div id="photo-wrap"><img id="photo"></div>
+  <div id="progress" style="width:0%"></div>
+  <div id="status"><div class="spinner"></div><div id="status-text">Loading...</div></div>
+</div>
+
+<script>
+(function(){
+  // ===== 配置 =====
+  var RELIVE_URL = '';  // 同源部署，留空即可
+  var SLIDE_INTERVAL = 15000; // 15秒切换
+  // ================
+
+  var token = localStorage.getItem('relive_token') || '';
+  var photos = [];
+  var currentIndex = 0;
+  var paused = false;
+  var timer = null;
+  var progressTimer = null;
+  var progressStart = 0;
+
+  // DOM
+  var loginPage = document.getElementById('login-page');
+  var slideshow = document.getElementById('slideshow');
+  var photoEl = document.getElementById('photo');
+  var progressBar = document.getElementById('progress');
+  var statusEl = document.getElementById('status');
+  var statusText = document.getElementById('status-text');
+
+  // ===== 工具函数 =====
+  function ajax(method, url, headers, body, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    if (headers) {
+      for (var k in headers) {
+        if (headers.hasOwnProperty(k)) xhr.setRequestHeader(k, headers[k]);
+      }
+    }
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4) cb(xhr.status, xhr.responseText);
+    };
+    xhr.send(body || null);
+  }
+
+  function showStatus(msg) {
+    statusEl.style.display = 'block';
+    statusText.textContent = msg;
+  }
+  function hideStatus() { statusEl.style.display = 'none'; }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    return dateStr.substring(0, 10);
+  }
+
+  // ===== 登录 =====
+  window.doLogin = function() {
+    var user = document.getElementById('input-user').value;
+    var pass = document.getElementById('input-pass').value;
+    var errEl = document.getElementById('login-error');
+    var btn = document.getElementById('btn-login');
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    ajax('POST', RELIVE_URL + '/api/v1/auth/login',
+      {'Content-Type': 'application/json'},
+      JSON.stringify({username: user, password: pass}),
+      function(status, body) {
+        btn.disabled = false;
+        btn.textContent = 'Login';
+        if (status === 200) {
+          try {
+            var data = JSON.parse(body);
+            if (data.success && data.data && data.data.token) {
+              token = data.data.token;
+              localStorage.setItem('relive_token', token);
+              startSlideshow();
+              return;
+            }
+          } catch(e) {}
+          errEl.textContent = 'Login failed';
+        } else {
+          errEl.textContent = 'Invalid username or password';
+        }
+      }
+    );
+  };
+
+  // Enter 键登录
+  document.getElementById('input-pass').onkeydown = function(e) {
+    if (e.keyCode === 13 || e.which === 13) doLogin();
+  };
+
+  // ===== 加载今日批次 =====
+  function loadBatch(cb) {
+    ajax('GET', RELIVE_URL + '/api/v1/display/batch',
+      {'Authorization': 'Bearer ' + token},
+      null,
+      function(status, body) {
+        if (status === 200) {
+          try {
+            var resp = JSON.parse(body);
+            if (resp.success && resp.data) {
+              var batch = resp.data;
+              if (batch.status === 'ready' && batch.items && batch.items.length > 0) {
+                photos = batch.items;
+                cb(true);
+                return;
+              }
+              if (batch.status === 'running') {
+                showStatus('Batch generating, please wait...');
+                setTimeout(function(){ loadBatch(cb); }, 5000);
+                return;
+              }
+              if (batch.status === 'failed') {
+                showStatus('Batch generation failed: ' + (batch.error_message || ''));
+                return;
+              }
+            }
+          } catch(e) {}
+        }
+        // 没有批次，尝试生成
+        showStatus('No batch found, generating...');
+        generateBatch(cb);
+      }
+    );
+  }
+
+  function generateBatch(cb) {
+    ajax('POST', RELIVE_URL + '/api/v1/display/batch/generate',
+      {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
+      JSON.stringify({force: false}),
+      function(status, body) {
+        if (status === 200 || status === 409) {
+          // 200=启动成功, 409=已在运行
+          setTimeout(function(){ loadBatch(cb); }, 5000);
+        } else {
+          showStatus('Failed to generate batch, retrying...');
+          setTimeout(function(){ generateBatch(cb); }, 15000);
+        }
+      }
+    );
+  }
+
+  // ===== 展示照片 =====
+  function showPhoto(index) {
+    if (photos.length === 0) return;
+    currentIndex = ((index % photos.length) + photos.length) % photos.length;
+    var item = photos[currentIndex];
+    var photo = item.photo || {};
+
+    // 更新照片
+    photoEl.className = 'fade-out';
+
+    setTimeout(function() {
+      // 加载新照片 - 优先使用预览图（更快），回退到原图
+      var imgUrl = RELIVE_URL + '/api/v1/display/items/' + item.id + '/preview';
+      var img = new Image();
+      img.onload = function() {
+        photoEl.src = imgUrl;
+        photoEl.className = 'visible';
+        hideStatus();
+        startProgress();
+      };
+      img.onerror = function() {
+        // 回退到原图
+        imgUrl = RELIVE_URL + '/api/v1/photos/' + item.photo_id + '/image';
+        var img2 = new Image();
+        img2.onload = function() {
+          photoEl.src = imgUrl;
+          photoEl.className = 'visible';
+          hideStatus();
+          startProgress();
+        };
+        img2.onerror = function() {
+          showStatus('Photo load failed');
+          scheduleNext();
+        };
+        img2.src = imgUrl;
+      };
+      img.src = imgUrl;
+    }, photoEl.src ? 1200 : 0);
+  }
+
+  // ===== 进度条 =====
+  function startProgress() {
+    clearInterval(progressTimer);
+    progressBar.style.width = '0%';
+    progressStart = Date.now();
+    progressTimer = setInterval(function() {
+      if (paused) return;
+      var elapsed = Date.now() - progressStart;
+      var pct = Math.min((elapsed / SLIDE_INTERVAL) * 100, 100);
+      progressBar.style.width = pct + '%';
+    }, 500);
+  }
+
+  // ===== 定时切换 =====
+  function scheduleNext() {
+    clearTimeout(timer);
+    timer = setTimeout(function() {
+      if (!paused) showPhoto(currentIndex + 1);
+    }, SLIDE_INTERVAL);
+  }
+
+  // 每次照片显示完成后启动下一张计时
+  var origShowPhoto = showPhoto;
+  showPhoto = function(index) {
+    clearTimeout(timer);
+    origShowPhoto(index);
+    scheduleNext();
+  };
+
+  // ===== 控制 =====
+  window.nextPhoto = function() {
+    showPhoto(currentIndex + 1);
+  };
+  window.prevPhoto = function() {
+    showPhoto(currentIndex - 1);
+  };
+  window.togglePause = function() {
+    paused = !paused;
+    if (!paused) {
+      progressStart = Date.now() - (parseFloat(progressBar.style.width) || 0) / 100 * SLIDE_INTERVAL;
+      scheduleNext();
+    }
+  };
+
+  // 键盘控制
+  document.onkeydown = function(e) {
+    if (loginPage.style.display !== 'none') return;
+    if (e.keyCode === 37 || e.which === 37) prevPhoto();
+    else if (e.keyCode === 39 || e.which === 39) nextPhoto();
+    else if (e.keyCode === 32 || e.which === 32) { e.preventDefault(); togglePause(); }
+  };
+
+  // 触摸滑动
+  var touchX = 0;
+  document.addEventListener('touchstart', function(e) { touchX = e.touches[0].clientX; });
+  document.addEventListener('touchend', function(e) {
+    var diff = touchX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 60) {
+      if (diff > 0) nextPhoto(); else prevPhoto();
+    }
+  });
+
+  // ===== 启动 =====
+  function startSlideshow() {
+    loginPage.style.display = 'none';
+    slideshow.style.display = 'block';
+    showStatus('Loading today\'s photos...');
+    loadBatch(function(ok) {
+      if (ok) {
+        showPhoto(0);
+      }
+    });
+  }
+
+  // 自动登录（已有 token）
+  if (token) {
+    // 验证 token 是否有效
+    ajax('GET', RELIVE_URL + '/api/v1/auth/user',
+      {'Authorization': 'Bearer ' + token},
+      null,
+      function(status) {
+        if (status === 200) {
+          startSlideshow();
+        } else {
+          localStorage.removeItem('relive_token');
+          token = '';
+        }
+      }
+    );
+  }
+})();
+</script>
+</body>
+</html>

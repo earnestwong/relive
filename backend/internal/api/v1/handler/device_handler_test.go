@@ -1,0 +1,282 @@
+package handler
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/davidhoo/relive/internal/model"
+	"github.com/davidhoo/relive/internal/repository"
+	"github.com/davidhoo/relive/internal/service"
+	"github.com/davidhoo/relive/internal/util"
+	"github.com/davidhoo/relive/pkg/config"
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+func init() {
+	gin.SetMode(gin.TestMode)
+}
+
+func newDeviceHandlerForTest(t *testing.T) (*DeviceHandler, *gorm.DB) {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+
+	if err := db.AutoMigrate(&model.Device{}); err != nil {
+		t.Fatalf("migrate test db: %v", err)
+	}
+
+	repo := repository.NewDeviceRepository(db)
+	svc := service.NewDeviceService(repo, &config.Config{
+		Security: config.SecurityConfig{APIKeyPrefix: "sk-relive-"},
+	})
+
+	return NewDeviceHandler(svc), db
+}
+
+func performJSONRequest(t *testing.T, method, path string, body []byte, params gin.Params, fn func(*gin.Context)) *httptest.ResponseRecorder {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Params = params
+	ctx.Request = httptest.NewRequest(method, path, bytes.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	fn(ctx)
+	return recorder
+}
+
+func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) model.Response {
+	t.Helper()
+
+	var resp model.Response
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return resp
+}
+
+func decodeResponseData[T any](t *testing.T, response model.Response) T {
+	t.Helper()
+
+	dataJSON, err := json.Marshal(response.Data)
+	if err != nil {
+		t.Fatalf("marshal response data: %v", err)
+	}
+
+	var data T
+	if err := json.Unmarshal(dataJSON, &data); err != nil {
+		t.Fatalf("unmarshal response data: %v", err)
+	}
+	return data
+}
+
+func TestDeviceHandlerCreateDevice(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	body := []byte(`{"name":"Living Room Frame","device_type":"embedded"}`)
+	recorder := performJSONRequest(t, http.MethodPost, "/api/v1/devices", body, nil, handler.CreateDevice)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success response, got: %+v", resp)
+	}
+
+	created := decodeResponseData[model.CreateDeviceResponse](t, resp)
+	if created.ID == 0 {
+		t.Fatal("expected created device id")
+	}
+	if created.DeviceID == "" {
+		t.Fatal("expected generated device id")
+	}
+	if !strings.HasPrefix(created.APIKey, "sk-relive-") {
+		t.Fatalf("expected api key prefix sk-relive-, got %s", created.APIKey)
+	}
+	if created.RenderProfile != util.DefaultRenderProfile() {
+		t.Fatalf("expected default render profile %s, got %s", util.DefaultRenderProfile(), created.RenderProfile)
+	}
+
+	var stored model.Device
+	if err := db.First(&stored, created.ID).Error; err != nil {
+		t.Fatalf("load created device: %v", err)
+	}
+	if stored.Name != "Living Room Frame" {
+		t.Fatalf("expected stored name Living Room Frame, got %s", stored.Name)
+	}
+}
+
+func TestDeviceHandlerUpdateRenderProfile(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	device := &model.Device{
+		DeviceID:      "FRAME001",
+		Name:          "Frame",
+		APIKey:        "sk-relive-test",
+		DeviceType:    model.DeviceTypeEmbedded,
+		IsEnabled:     true,
+		RenderProfile: util.DefaultRenderProfile(),
+	}
+	if err := db.Create(device).Error; err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+
+	body := []byte(`{"render_profile":"waveshare_7in3e"}`)
+	recorder := performJSONRequest(
+		t,
+		http.MethodPut,
+		"/api/v1/devices/1/render-profile",
+		body,
+		gin.Params{{Key: "id", Value: strconv.FormatUint(uint64(device.ID), 10)}},
+		handler.UpdateDeviceRenderProfile,
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var updated model.Device
+	if err := db.First(&updated, device.ID).Error; err != nil {
+		t.Fatalf("load updated device: %v", err)
+	}
+	if updated.RenderProfile != "waveshare_7in3e" {
+		t.Fatalf("expected render profile waveshare_7in3e, got %s", updated.RenderProfile)
+	}
+}
+
+func TestDeviceHandlerGetDeviceStats(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	recent := time.Now().Add(-2 * time.Minute)
+	old := time.Now().Add(-10 * time.Minute)
+	devices := []*model.Device{
+		{DeviceID: "EMBED001", Name: "Embedded", APIKey: "sk-relive-1", DeviceType: model.DeviceTypeEmbedded, IsEnabled: true, LastSeen: &recent},
+		{DeviceID: "OFF001", Name: "Analyzer", APIKey: "sk-relive-2", DeviceType: model.DeviceTypeOffline, IsEnabled: true, LastSeen: &old},
+	}
+	for _, device := range devices {
+		if err := db.Create(device).Error; err != nil {
+			t.Fatalf("create device %s: %v", device.DeviceID, err)
+		}
+	}
+
+	recorder := performJSONRequest(t, http.MethodGet, "/api/v1/devices/stats", nil, nil, handler.GetDeviceStats)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	resp := decodeAPIResponse(t, recorder)
+	stats := decodeResponseData[model.DeviceStatsResponse](t, resp)
+	if stats.Total != 2 {
+		t.Fatalf("expected total 2, got %d", stats.Total)
+	}
+	if stats.Online != 1 {
+		t.Fatalf("expected online 1, got %d", stats.Online)
+	}
+	if stats.ByType[model.DeviceTypeEmbedded] != 1 {
+		t.Fatalf("expected embedded count 1, got %d", stats.ByType[model.DeviceTypeEmbedded])
+	}
+	if stats.ByType[model.DeviceTypeOffline] != 1 {
+		t.Fatalf("expected offline count 1, got %d", stats.ByType[model.DeviceTypeOffline])
+	}
+}
+
+func TestDeviceHandlerGetDevices(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	recent := time.Now()
+	db.Create(&model.Device{DeviceID: "D1", Name: "Frame1", APIKey: "sk-relive-1", DeviceType: model.DeviceTypeEmbedded, IsEnabled: true, LastSeen: &recent})
+	db.Create(&model.Device{DeviceID: "D2", Name: "Frame2", APIKey: "sk-relive-2", DeviceType: model.DeviceTypeMobile, IsEnabled: true})
+
+	recorder := performJSONRequest(t, http.MethodGet, "/api/v1/devices?page=1&page_size=10", nil, nil, handler.GetDevices)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got: %+v", resp)
+	}
+}
+
+func TestDeviceHandlerGetDeviceByID(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	db.Create(&model.Device{DeviceID: "FRAME001", Name: "Frame1", APIKey: "sk-relive-1", DeviceType: model.DeviceTypeEmbedded, IsEnabled: true})
+
+	recorder := performJSONRequest(t, http.MethodGet, "/api/v1/devices/FRAME001", nil,
+		gin.Params{{Key: "device_id", Value: "FRAME001"}}, handler.GetDeviceByID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestDeviceHandlerGetDeviceByID_NotFound(t *testing.T) {
+	handler, _ := newDeviceHandlerForTest(t)
+
+	recorder := performJSONRequest(t, http.MethodGet, "/api/v1/devices/NONEXISTENT", nil,
+		gin.Params{{Key: "device_id", Value: "NONEXISTENT"}}, handler.GetDeviceByID)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestDeviceHandlerDeleteDevice(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	db.Create(&model.Device{DeviceID: "D1", Name: "Frame1", APIKey: "sk-relive-1", DeviceType: model.DeviceTypeEmbedded, IsEnabled: true})
+
+	recorder := performJSONRequest(t, http.MethodDelete, "/api/v1/devices/1", nil,
+		gin.Params{{Key: "id", Value: "1"}}, handler.DeleteDevice)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	// Verify deleted
+	var count int64
+	db.Model(&model.Device{}).Count(&count)
+	if count != 0 {
+		t.Fatalf("expected 0 devices after delete, got %d", count)
+	}
+}
+
+func TestDeviceHandlerDeleteDevice_InvalidID(t *testing.T) {
+	handler, _ := newDeviceHandlerForTest(t)
+
+	recorder := performJSONRequest(t, http.MethodDelete, "/api/v1/devices/abc", nil,
+		gin.Params{{Key: "id", Value: "abc"}}, handler.DeleteDevice)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", recorder.Code)
+	}
+}
+
+func TestDeviceHandlerUpdateDeviceEnabled(t *testing.T) {
+	handler, db := newDeviceHandlerForTest(t)
+
+	db.Create(&model.Device{DeviceID: "D1", Name: "Frame1", APIKey: "sk-relive-1", DeviceType: model.DeviceTypeEmbedded, IsEnabled: true})
+
+	body := []byte(`{"is_enabled":false}`)
+	recorder := performJSONRequest(t, http.MethodPut, "/api/v1/devices/1/enabled", body,
+		gin.Params{{Key: "id", Value: "1"}}, handler.UpdateDeviceEnabled)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var updated model.Device
+	db.First(&updated, 1)
+	if updated.IsEnabled {
+		t.Fatal("expected device to be disabled")
+	}
+}
