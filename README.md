@@ -150,7 +150,7 @@ Relive 是一个自部署的照片回忆系统 —— 扫描你 NAS 中的照片
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/davidhoo/relive.git
+git clone https://github.com/earnestwong/relive.git
 cd relive
 ```
 
@@ -329,7 +329,7 @@ make build-analyzer
 - 支持更多 AI Provider（Google Gemini 等）
 
 ## 致谢
-
+- (https://github.com/davidhoo/relive) - 复刻自此项目后按需修改
 - [InkTime](https://github.com/dai-hongtao/InkTime) - 墨水屏相框的灵感来源，我们学习和参照了他的想法
 
 ## License
