@@ -264,7 +264,7 @@ func BuildDisplayCanvasAdaptive(filePath string, title, subtitle string, manualR
 	subtitle = strings.TrimSpace(subtitle)
 
 	const (
-		adaptiveTitleFontSize    = 20
+		adaptiveTitleFontSize    = 32
 		adaptiveSubtitleFontSize = 15
 		adaptiveTextPadding      = 32
 	)
@@ -300,10 +300,10 @@ func BuildDisplayCanvasAdaptive(filePath string, title, subtitle string, manualR
 		maxWidth := canvasWidth - adaptiveTextPadding*2
 		truncated := truncateTextToWidth(face, subtitle, maxWidth)
 		if truncated != "" {
-			// 副标题距信息区底部 8px
+			// 副标题距信息区底部 8px，右对齐
 			infoHeight := canvasHeight - photoHeight
 			baselineY := photoHeight + infoHeight - 8
-			renderTextLineAdaptive(canvas, face, truncated, baselineY, subtitleColor, adaptiveTextPadding)
+			renderTextLineAligned(canvas, face, truncated, baselineY, subtitleColor, adaptiveTextPadding, "right")
 		}
 	}
 
@@ -312,13 +312,29 @@ func BuildDisplayCanvasAdaptive(filePath string, title, subtitle string, manualR
 
 // renderTextLineAdaptive 渲染居中文本行（自适应 canvas）
 func renderTextLineAdaptive(img *image.NRGBA, face font.Face, text string, baselineY int, textColor color.NRGBA, padding int) {
+	renderTextLineAligned(img, face, text, baselineY, textColor, padding, "center")
+}
+
+// renderTextLineAligned 渲染对齐文本行
+// align: "center" | "right"
+func renderTextLineAligned(img *image.NRGBA, face font.Face, text string, baselineY int, textColor color.NRGBA, padding int, align string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
 	width := font.MeasureString(face, text).Round()
-	x := (img.Bounds().Dx() - width) / 2
-	if x < padding {
-		x = padding
+	canvasWidth := img.Bounds().Dx()
+	var x int
+	switch align {
+	case "right":
+		x = canvasWidth - width - padding
+		if x < padding {
+			x = padding
+		}
+	default: // center
+		x = (canvasWidth - width) / 2
+		if x < padding {
+			x = padding
+		}
 	}
 	drawer := &font.Drawer{
 		Dst:  img,
