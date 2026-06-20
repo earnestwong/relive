@@ -43,8 +43,8 @@ func normalizeDisplayStrategyConfig(cfg *model.DisplayStrategyConfig) {
 	if cfg.DailyCount <= 0 {
 		cfg.DailyCount = 3
 	}
-	if cfg.DailyCount > 20 {
-		cfg.DailyCount = 20
+	if cfg.DailyCount > 30 {
+		cfg.DailyCount = 30
 	}
 	if cfg.CandidatePoolFactor <= 0 {
 		cfg.CandidatePoolFactor = 5
